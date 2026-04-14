@@ -1,7 +1,7 @@
 {
   "servers": {
     "beads": {
-      "command": "beads-mcp",
+      "command": "C:\\Users\\uwbauman\\.local\\bin\\beads-mcp.exe",
       "args": []
     }
   }
