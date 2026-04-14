@@ -2,6 +2,9 @@
   "database": "dolt",
   "backend": "dolt",
   "dolt_mode": "server",
-  "dolt_database": "goldfish",
+  "dolt_server_host": "127.0.0.1",
+  "dolt_server_port": 56286,
+  "dolt_server_user": "root",
+  "dolt_database": "dolt",
   "project_id": "df46ca73-3319-493f-811a-cac7e0c0284b"
 }
