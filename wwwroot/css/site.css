@@ -320,6 +320,56 @@ body.paused #timer {
     box-shadow: 0 0 10px rgba(245, 158, 11, 0.4);
 }
 
+.prompt-reminder {
+    margin-bottom: 1rem;
+    padding: 0.9rem 1rem;
+    border-radius: 16px;
+    border: 1px solid rgba(245, 158, 11, 0.45);
+    background: linear-gradient(135deg, rgba(245, 158, 11, 0.18), rgba(17, 17, 17, 0.78));
+    box-shadow: 0 10px 24px rgba(245, 158, 11, 0.12);
+}
+
+.prompt-reminder[hidden] {
+    display: none;
+}
+
+.prompt-reminder-kicker {
+    margin-bottom: 0.3rem;
+    color: #FCD34D;
+    font-size: 0.75rem;
+    font-weight: 800;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+}
+
+.prompt-reminder-title {
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: clamp(1rem, 1.5vw, 1.25rem);
+    font-weight: 700;
+    line-height: 1.15;
+}
+
+.prompt-reminder-copy {
+    margin-top: 0.35rem;
+    color: rgba(245, 245, 245, 0.82);
+    line-height: 1.4;
+}
+
+.prompt-reminder-check {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.7rem;
+    margin-top: 0.75rem;
+    font-weight: 700;
+    cursor: pointer;
+}
+
+.prompt-reminder-check input {
+    width: 1.1rem;
+    height: 1.1rem;
+    accent-color: #F59E0B;
+}
+
 .meta-row {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -2169,6 +2219,38 @@ body.editor-resizing {
     resize: vertical;
     min-height: 5rem;
     line-height: 1.4;
+}
+
+.editor-checkbox-field {
+    padding: 0.8rem 0.9rem;
+    border-radius: 12px;
+    border: 1px solid rgba(245, 158, 11, 0.18);
+    background: rgba(245, 158, 11, 0.05);
+}
+
+.editor-checkbox-label {
+    display: flex;
+    align-items: center;
+    gap: 0.65rem;
+    color: var(--text-main);
+    text-transform: none;
+    letter-spacing: 0;
+    font-size: 0.92rem;
+    cursor: pointer;
+}
+
+.editor-checkbox-label input {
+    min-height: auto;
+    width: 1rem;
+    height: 1rem;
+    padding: 0;
+    accent-color: #F59E0B;
+}
+
+.editor-field-help {
+    color: var(--text-muted);
+    font-size: 0.84rem;
+    line-height: 1.35;
 }
 
 .editor-info-editor-panel .editor-field:has(textarea) {

@@ -90,6 +90,26 @@ describe('normalizeTimelineAndSelection', () => {
 
         expect(timeline.title).toBe('Untitled Course');
     });
+
+    it('preserves the mandatory prompt flag on existing sections', () => {
+        const timeline: Timeline = {
+            title: 'Prompt Course',
+            chapters: [{
+                title: 'Chapter A',
+                sections: [{
+                    title: 'Audience check-in',
+                    type: 'Prompt',
+                    durationSeconds: 120,
+                    instructions: 'Ask the room to respond.',
+                    isMandatory: true,
+                }],
+            }],
+        };
+
+        normalizeTimelineAndSelection(timeline, 0, 0);
+
+        expect(timeline.chapters[0].sections[0].isMandatory).toBe(true);
+    });
 });
 
 describe('formatSessionDuration', () => {

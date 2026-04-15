@@ -11,6 +11,7 @@ import {
     closeNotesPanel,
     advanceNotesSection,
     previousNotesSection,
+    markCurrentMandatoryPromptComplete,
 } from '../state.js';
 import type { Timeline } from '../../models/types.js';
 
@@ -57,6 +58,8 @@ function resetState(): void {
     goldfishState.hasStarted = false;
     goldfishState.sessionEndTime = 0;
     goldfishState.rightPanelMode = 'info';
+    goldfishState.pendingMandatoryPrompt = false;
+    goldfishState.completedMandatoryPromptKeys = [];
 }
 
 describe('advanceSegment', () => {
@@ -439,5 +442,220 @@ describe('previousNotesSection', () => {
 
         expect(goldfishState.currentChapterIndex).toBe(0);
         expect(goldfishState.currentSectionIndex).toBe(0);
+    });
+});
+
+describe('mandatory prompt reminders', () => {
+    beforeEach(() => {
+        vi.useFakeTimers();
+        resetState();
+    });
+
+    afterEach(() => {
+        vi.useRealTimers();
+    });
+
+    it('auto-pauses when entering a mandatory prompt section', () => {
+        const timeline: Timeline = {
+            title: 'Prompt Timeline',
+            chapters: [{
+                title: 'Chapter 1',
+                sections: [
+                    {
+                        title: 'Intro',
+                        type: 'Narration',
+                        durationSeconds: 60,
+                        instructions: 'Intro instructions',
+                    },
+                    {
+                        title: 'Ask the room',
+                        type: 'Prompt',
+                        durationSeconds: 90,
+                        instructions: 'Ask everyone for a show of hands.',
+                        isMandatory: true,
+                    },
+                ],
+            }],
+        };
+
+        goldfishState.currentChapterIndex = 0;
+        goldfishState.currentSectionIndex = 0;
+        goldfishState.isPaused = false;
+        goldfishState.hasStarted = true;
+
+        advanceSegment(timeline);
+
+        expect(goldfishState.currentSectionIndex).toBe(1);
+        expect(goldfishState.isPaused).toBe(true);
+        expect(goldfishState.pendingMandatoryPrompt).toBe(true);
+    });
+
+    it('does not resume while a mandatory prompt is still incomplete', () => {
+        const now = Date.now();
+        vi.setSystemTime(now);
+
+        goldfishState.isPaused = true;
+        goldfishState.hasStarted = true;
+        goldfishState.pausedAt = now;
+        goldfishState.sectionStartTime = now - 1000;
+        goldfishState.sessionEndTime = now + 5000;
+        goldfishState.pendingMandatoryPrompt = true;
+
+        pauseResume();
+
+        expect(goldfishState.isPaused).toBe(true);
+        expect(goldfishState.pendingMandatoryPrompt).toBe(true);
+    });
+
+    it('blocks navigation until the presenter marks the prompt complete', () => {
+        const timeline: Timeline = {
+            title: 'Prompt Timeline',
+            chapters: [{
+                title: 'Chapter 1',
+                sections: [
+                    {
+                        title: 'Ask the room',
+                        type: 'Prompt',
+                        durationSeconds: 90,
+                        instructions: 'Ask everyone for a show of hands.',
+                        isMandatory: true,
+                    },
+                    {
+                        title: 'Wrap-up',
+                        type: 'Narration',
+                        durationSeconds: 60,
+                        instructions: 'Continue the presentation.',
+                    },
+                ],
+            }],
+        };
+
+        goldfishState.currentChapterIndex = 0;
+        goldfishState.currentSectionIndex = 0;
+        goldfishState.pendingMandatoryPrompt = true;
+
+        advanceSegment(timeline);
+
+        expect(goldfishState.currentSectionIndex).toBe(0);
+    });
+
+    it('allows advancing after the presenter checks off the prompt', () => {
+        const timeline: Timeline = {
+            title: 'Prompt Timeline',
+            chapters: [{
+                title: 'Chapter 1',
+                sections: [
+                    {
+                        title: 'Ask the room',
+                        type: 'Prompt',
+                        durationSeconds: 90,
+                        instructions: 'Ask everyone for a show of hands.',
+                        isMandatory: true,
+                    },
+                    {
+                        title: 'Wrap-up',
+                        type: 'Narration',
+                        durationSeconds: 60,
+                        instructions: 'Continue the presentation.',
+                    },
+                ],
+            }],
+        };
+
+        goldfishState.currentChapterIndex = 0;
+        goldfishState.currentSectionIndex = 0;
+        goldfishState.pendingMandatoryPrompt = true;
+
+        markCurrentMandatoryPromptComplete(timeline, true);
+        advanceSegment(timeline);
+
+        expect(goldfishState.pendingMandatoryPrompt).toBe(false);
+        expect(goldfishState.currentSectionIndex).toBe(1);
+    });
+
+    it('stops on the first mandatory prompt when advancing chapters', () => {
+        const timeline: Timeline = {
+            title: 'Prompt Timeline',
+            chapters: [
+                {
+                    title: 'Chapter 1',
+                    sections: [{
+                        title: 'Normal section',
+                        type: 'Narration',
+                        durationSeconds: 60,
+                        instructions: 'Continue.',
+                    }],
+                },
+                {
+                    title: 'Chapter 2',
+                    sections: [{
+                        title: 'Required audience action',
+                        type: 'Prompt',
+                        durationSeconds: 90,
+                        instructions: 'Ask the room to complete the task.',
+                        isMandatory: true,
+                    }],
+                },
+            ],
+        };
+
+        goldfishState.currentChapterIndex = 0;
+        goldfishState.currentSectionIndex = 0;
+        goldfishState.isPaused = false;
+        goldfishState.hasStarted = true;
+
+        advanceChapter(timeline);
+
+        expect(goldfishState.currentChapterIndex).toBe(1);
+        expect(goldfishState.currentSectionIndex).toBe(0);
+        expect(goldfishState.pendingMandatoryPrompt).toBe(true);
+        expect(goldfishState.isPaused).toBe(true);
+    });
+
+    it('does not skip a later mandatory prompt in the current chapter', () => {
+        const timeline: Timeline = {
+            title: 'Prompt Timeline',
+            chapters: [
+                {
+                    title: 'Chapter 1',
+                    sections: [
+                        {
+                            title: 'Normal section',
+                            type: 'Narration',
+                            durationSeconds: 60,
+                            instructions: 'Continue.',
+                        },
+                        {
+                            title: 'Required audience action',
+                            type: 'Prompt',
+                            durationSeconds: 90,
+                            instructions: 'Ask the room to complete the task.',
+                            isMandatory: true,
+                        },
+                    ],
+                },
+                {
+                    title: 'Chapter 2',
+                    sections: [{
+                        title: 'Wrap-up',
+                        type: 'Narration',
+                        durationSeconds: 60,
+                        instructions: 'Continue.',
+                    }],
+                },
+            ],
+        };
+
+        goldfishState.currentChapterIndex = 0;
+        goldfishState.currentSectionIndex = 0;
+        goldfishState.isPaused = false;
+        goldfishState.hasStarted = true;
+
+        advanceChapter(timeline);
+
+        expect(goldfishState.currentChapterIndex).toBe(0);
+        expect(goldfishState.currentSectionIndex).toBe(1);
+        expect(goldfishState.pendingMandatoryPrompt).toBe(true);
+        expect(goldfishState.isPaused).toBe(true);
     });
 });

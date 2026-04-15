@@ -19,6 +19,8 @@ pub struct Section {
   pub duration_seconds: i64,
   pub instructions: String,
   pub transcript: Option<String>,
+  #[serde(rename = "isMandatory", default)]
+  pub is_mandatory: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -139,6 +141,7 @@ mod tests {
           duration_seconds: 300,
           instructions: "Set expectations".to_string(),
           transcript: Some("Welcome everyone".to_string()),
+          is_mandatory: false,
         }],
       }],
     }

@@ -1,4 +1,4 @@
-import { goldfishState, advanceSegment, previousSegment, advanceChapter, previousChapter, pauseResume, openNotesPanel, closeNotesPanel, advanceNotesSection, navigateToSectionInChapter } from './core/state.js';
+import { goldfishState, advanceSegment, previousSegment, advanceChapter, previousChapter, pauseResume, openNotesPanel, closeNotesPanel, advanceNotesSection, navigateToSectionInChapter, markCurrentMandatoryPromptComplete } from './core/state.js';
 import { render } from './ui/renderer.js';
 import { loadCourse } from './core/data-loader.js';
 import { Timeline } from './models/types.js';
@@ -64,6 +64,7 @@ async function init(): Promise<void> {
     const btnPrev = document.getElementById('btn-prev');
     const btnPause = document.getElementById('btn-pause');
     const btnNext = document.getElementById('btn-next');
+    const promptReminder = document.getElementById('prompt-reminder');
 
     const handlePreviousChapter = (): void => {
         previousChapter(timeline);
@@ -90,6 +91,15 @@ async function init(): Promise<void> {
     });
 
     btnNext?.addEventListener('click', handleNextChapter);
+
+    promptReminder?.addEventListener('change', (event) => {
+        const target = event.target;
+        if (!(target instanceof HTMLInputElement) || target.id !== 'prompt-reminder-check') {
+            return;
+        }
+
+        markCurrentMandatoryPromptComplete(timeline, target.checked);
+    });
 
     const btnExit = document.getElementById('btn-exit');
     const exitModal = document.getElementById('exit-modal');

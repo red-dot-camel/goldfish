@@ -6,6 +6,7 @@ export interface Section {
     durationSeconds: number;
     instructions: string;
     transcript?: string;
+    isMandatory?: boolean;
 }
 
 export interface Chapter {
@@ -27,4 +28,6 @@ export interface AppState {
     hasStarted: boolean; // true once the user starts the timer for the first time
     sessionEndTime: number; // fixed wall-clock endpoint (shifts forward on pause/resume)
     rightPanelMode: 'info' | 'notes';
+    pendingMandatoryPrompt: boolean;
+    completedMandatoryPromptKeys: string[];
 }
