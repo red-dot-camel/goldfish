@@ -483,7 +483,7 @@ function renderSectionList(timeline: Timeline): void {
         card.innerHTML = `
             <span class="editor-info-handle" aria-hidden="true">::</span>
             <span class="editor-info-card-label">${escapeHtml(section.title)}</span>
-            <span class="editor-info-card-type">${escapeHtml(section.type)}</span>
+            <span class="editor-info-card-type">${escapeHtml(section.type)}${section.type === 'Prompt' && section.isMandatory ? ' • Mandatory' : ''}</span>
             <span class="editor-info-card-count">${formatSessionDuration(section.durationSeconds)}</span>
         `;
 
@@ -624,6 +624,13 @@ function renderSectionEditor(timeline: Timeline): void {
                 <div class="editor-field">
                     <label for="section-title-${index}">Title</label>
                     <input id="section-title-${index}" data-field="section-title" type="text" value="${escapeHtml(section.title)}" />
+                </div>
+                <div class="editor-field editor-checkbox-field">
+                    <label class="editor-checkbox-label" for="section-mandatory-${index}">
+                        <input id="section-mandatory-${index}" data-field="section-mandatory" type="checkbox" ${section.isMandatory ? 'checked' : ''}${section.type === 'Prompt' ? '' : ' disabled'} />
+                        <span>Mandatory prompt reminder</span>
+                    </label>
+                    <p class="editor-field-help">Pauses the timer and requires acknowledgment when this Prompt begins.</p>
                 </div>
                 <div class="editor-field">
                     <div class="editor-field-header">
@@ -809,9 +816,19 @@ function handleEditorInput(event: Event): void {
     if (field === 'section-type' && target instanceof HTMLSelectElement) {
         if (SECTION_TYPE_OPTIONS.includes(target.value as SectionType)) {
             section.type = target.value as SectionType;
+            if (section.type !== 'Prompt') {
+                delete section.isMandatory;
+            }
             saveCourse();
-            renderSectionList(timeline);
+            render(timeline);
         }
+    } else if (field === 'section-mandatory' && target instanceof HTMLInputElement) {
+        if (section.type === 'Prompt' && target.checked) {
+            section.isMandatory = true;
+        } else {
+            delete section.isMandatory;
+        }
+        saveCourse();
     } else if ((field === 'duration-minutes' || field === 'duration-seconds') && target instanceof HTMLInputElement) {
         const minutesInput = elSectionEditor?.querySelector('input[data-field="duration-minutes"]') as HTMLInputElement | null;
         const secondsInput = elSectionEditor?.querySelector('input[data-field="duration-seconds"]') as HTMLInputElement | null;

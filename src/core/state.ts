@@ -9,6 +9,8 @@ export const goldfishState: AppState = {
     hasStarted: false,
     sessionEndTime: 0,
     rightPanelMode: 'info',
+    pendingMandatoryPrompt: false,
+    completedMandatoryPromptKeys: [],
 };
 
 interface TimelinePosition {
@@ -43,15 +45,81 @@ function initSessionEndTime(timeline: Timeline): void {
     }
 }
 
+function isMandatoryPromptSection(timeline: Timeline, position: TimelinePosition): boolean {
+    const section = timeline.chapters[position.chapterIndex]?.sections[position.sectionIndex];
+    return section?.type === 'Prompt' && section.isMandatory === true;
+}
+
+function getPositionKey(position: TimelinePosition): string {
+    return `${position.chapterIndex}:${position.sectionIndex}`;
+}
+
+function isMandatoryPromptCompleted(position: TimelinePosition): boolean {
+    return goldfishState.completedMandatoryPromptKeys.includes(getPositionKey(position));
+}
+
+function isCurrentMandatoryPromptPending(timeline: Timeline): boolean {
+    const position = {
+        chapterIndex: goldfishState.currentChapterIndex,
+        sectionIndex: goldfishState.currentSectionIndex,
+    };
+
+    return isMandatoryPromptSection(timeline, position) && !isMandatoryPromptCompleted(position);
+}
+
+function getPositionIndex(position: TimelinePosition, timeline: Timeline): number {
+    const positions = flattenPositions(timeline);
+    return positions.findIndex(
+        p => p.chapterIndex === position.chapterIndex && p.sectionIndex === position.sectionIndex,
+    );
+}
+
+function findFirstIncompleteMandatoryPromptBefore(targetPosition: TimelinePosition, timeline: Timeline): TimelinePosition | undefined {
+    const positions = flattenPositions(timeline);
+    const currentIndex = currentFlatIndex(timeline);
+    const targetIndex = getPositionIndex(targetPosition, timeline);
+
+    if (currentIndex < 0 || targetIndex <= currentIndex) {
+        return undefined;
+    }
+
+    for (let index = currentIndex + 1; index <= targetIndex; index++) {
+        const position = positions[index];
+        if (isMandatoryPromptSection(timeline, position) && !isMandatoryPromptCompleted(position)) {
+            return position;
+        }
+    }
+
+    return undefined;
+}
+
+function resolveTargetPosition(targetPosition: TimelinePosition, timeline: Timeline): TimelinePosition {
+    return findFirstIncompleteMandatoryPromptBefore(targetPosition, timeline) ?? targetPosition;
+}
+
+function canMoveToPosition(position: TimelinePosition, timeline: Timeline): boolean {
+    if (!isCurrentMandatoryPromptPending(timeline)) {
+        return true;
+    }
+
+    return position.chapterIndex === goldfishState.currentChapterIndex
+        && position.sectionIndex === goldfishState.currentSectionIndex;
+}
+
 function moveToPosition(position: TimelinePosition, timeline: Timeline): void {
     initSessionEndTime(timeline);
+
+    const now = Date.now();
+    const requiresAcknowledgement = isMandatoryPromptSection(timeline, position) && !isMandatoryPromptCompleted(position);
+
     goldfishState.currentChapterIndex = position.chapterIndex;
     goldfishState.currentSectionIndex = position.sectionIndex;
-    goldfishState.sectionStartTime = Date.now();
-    goldfishState.isPaused = false;
-    goldfishState.pausedAt = undefined;
+    goldfishState.sectionStartTime = now;
+    goldfishState.isPaused = requiresAcknowledgement;
+    goldfishState.pausedAt = requiresAcknowledgement ? now : undefined;
     goldfishState.hasStarted = true;
     goldfishState.rightPanelMode = 'info';
+    goldfishState.pendingMandatoryPrompt = requiresAcknowledgement;
 }
 
 export function navigateToSectionInChapter(sectionIndex: number, timeline: Timeline): void {
@@ -59,14 +127,26 @@ export function navigateToSectionInChapter(sectionIndex: number, timeline: Timel
     if (sectionIndex < 0 || sectionIndex >= chapter.sections.length) {
         return;
     }
-    moveToPosition({ chapterIndex: goldfishState.currentChapterIndex, sectionIndex }, timeline);
+
+    const requestedPosition = { chapterIndex: goldfishState.currentChapterIndex, sectionIndex };
+    const targetPosition = resolveTargetPosition(requestedPosition, timeline);
+    if (!canMoveToPosition(targetPosition, timeline)) {
+        return;
+    }
+
+    moveToPosition(targetPosition, timeline);
 }
 
 export function advanceSegment(timeline: Timeline): void {
     const positions = flattenPositions(timeline);
     const current = currentFlatIndex(timeline);
     if (current >= 0 && current < positions.length - 1) {
-        moveToPosition(positions[current + 1], timeline);
+        const requestedPosition = positions[current + 1];
+        const targetPosition = resolveTargetPosition(requestedPosition, timeline);
+        if (!canMoveToPosition(targetPosition, timeline)) {
+            return;
+        }
+        moveToPosition(targetPosition, timeline);
     }
 }
 
@@ -74,21 +154,34 @@ export function previousSegment(timeline: Timeline): void {
     const positions = flattenPositions(timeline);
     const current = currentFlatIndex(timeline);
     if (current > 0) {
-        moveToPosition(positions[current - 1], timeline);
+        const targetPosition = positions[current - 1];
+        if (!canMoveToPosition(targetPosition, timeline)) {
+            return;
+        }
+        moveToPosition(targetPosition, timeline);
     }
 }
 
 export function advanceChapter(timeline: Timeline): void {
     const nextChapterIndex = goldfishState.currentChapterIndex + 1;
     if (nextChapterIndex < timeline.chapters.length) {
-        moveToPosition({ chapterIndex: nextChapterIndex, sectionIndex: 0 }, timeline);
+        const requestedPosition = { chapterIndex: nextChapterIndex, sectionIndex: 0 };
+        const targetPosition = resolveTargetPosition(requestedPosition, timeline);
+        if (!canMoveToPosition(targetPosition, timeline)) {
+            return;
+        }
+        moveToPosition(targetPosition, timeline);
     }
 }
 
 export function previousChapter(timeline: Timeline): void {
     const prevChapterIndex = goldfishState.currentChapterIndex - 1;
     if (prevChapterIndex >= 0) {
-        moveToPosition({ chapterIndex: prevChapterIndex, sectionIndex: 0 }, timeline);
+        const targetPosition = { chapterIndex: prevChapterIndex, sectionIndex: 0 };
+        if (!canMoveToPosition(targetPosition, timeline)) {
+            return;
+        }
+        moveToPosition(targetPosition, timeline);
     }
 }
 
@@ -112,10 +205,14 @@ export function advanceNotesSection(timeline: Timeline): void {
     }
 
     for (let i = current + 1; i < positions.length; i++) {
-        const position = positions[i];
-        const section = timeline.chapters[position.chapterIndex].sections[position.sectionIndex];
+        const requestedPosition = positions[i];
+        const section = timeline.chapters[requestedPosition.chapterIndex].sections[requestedPosition.sectionIndex];
         if (hasTranscript(section)) {
-            moveToPosition(position, timeline);
+            const targetPosition = resolveTargetPosition(requestedPosition, timeline);
+            if (!canMoveToPosition(targetPosition, timeline)) {
+                return;
+            }
+            moveToPosition(targetPosition, timeline);
             goldfishState.rightPanelMode = 'notes';
             return;
         }
@@ -133,6 +230,9 @@ export function previousNotesSection(timeline: Timeline): void {
         const position = positions[i];
         const section = timeline.chapters[position.chapterIndex].sections[position.sectionIndex];
         if (hasTranscript(section)) {
+            if (!canMoveToPosition(position, timeline)) {
+                return;
+            }
             moveToPosition(position, timeline);
             goldfishState.rightPanelMode = 'notes';
             return;
@@ -140,8 +240,47 @@ export function previousNotesSection(timeline: Timeline): void {
     }
 }
 
+export function markCurrentMandatoryPromptComplete(timeline: Timeline, completed: boolean): void {
+    const position = {
+        chapterIndex: goldfishState.currentChapterIndex,
+        sectionIndex: goldfishState.currentSectionIndex,
+    };
+
+    if (!isMandatoryPromptSection(timeline, position)) {
+        return;
+    }
+
+    const key = getPositionKey(position);
+    const existingIndex = goldfishState.completedMandatoryPromptKeys.indexOf(key);
+
+    if (completed) {
+        if (existingIndex < 0) {
+            goldfishState.completedMandatoryPromptKeys.push(key);
+        }
+        goldfishState.pendingMandatoryPrompt = false;
+        return;
+    }
+
+    if (existingIndex >= 0) {
+        goldfishState.completedMandatoryPromptKeys.splice(existingIndex, 1);
+    }
+
+    goldfishState.pendingMandatoryPrompt = true;
+    goldfishState.isPaused = true;
+    goldfishState.pausedAt = Date.now();
+}
+
 export function pauseResume(timeline?: Timeline): void {
     if (goldfishState.isPaused) {
+        const hasIncompleteMandatoryPrompt = timeline
+            ? isCurrentMandatoryPromptPending(timeline)
+            : goldfishState.pendingMandatoryPrompt;
+
+        if (hasIncompleteMandatoryPrompt) {
+            goldfishState.pendingMandatoryPrompt = true;
+            return;
+        }
+
         if (!goldfishState.hasStarted) {
             goldfishState.sectionStartTime = Date.now();
             if (timeline) {

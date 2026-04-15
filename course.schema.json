@@ -52,6 +52,10 @@
         "transcript": {
           "type": "string",
           "description": "Optional transcript markdown content (freeform markdown)."
+        },
+        "isMandatory": {
+          "type": "boolean",
+          "description": "When true on a Prompt section, the presentation pauses until the presenter acknowledges the prompt."
         }
       }
     },

@@ -9,6 +9,7 @@ const elTotalRemaining = document.getElementById('total-remaining')!;
 const elInfoPanel = document.getElementById('info-panel')!;
 const elPanelRightHeader = document.getElementById('panel-right-header')!;
 const elPauseButton = document.getElementById('btn-pause');
+const elPromptReminder = document.getElementById('prompt-reminder') as HTMLElement | null;
 const elSegmentKicker = document.getElementById('segment-kicker')!;
 const elSegmentBadgeText = document.getElementById('segment-badge-text')!;
 const elTimerState = document.getElementById('timer-state')!;
@@ -18,6 +19,7 @@ const elRightPanel = document.querySelector('.panel-right') as HTMLElement | nul
 
 const STATE_CLASSES = ['state-ok', 'state-warn', 'state-over'] as const;
 let lastRenderKey = '';
+let lastPromptReminderKey = '';
 
 interface TimelinePosition {
     chapterIndex: number;
@@ -73,6 +75,20 @@ function getSectionToneClass(index: number): string {
         return 'info-section-secondary';
     }
     return 'info-section-tertiary';
+}
+
+function getCurrentPromptKey(state: AppState): string {
+    return `${state.currentChapterIndex}:${state.currentSectionIndex}`;
+}
+
+function isMandatoryPromptCompleted(section: Section, state: AppState): boolean {
+    return section.type === 'Prompt'
+        && section.isMandatory === true
+        && state.completedMandatoryPromptKeys.includes(getCurrentPromptKey(state));
+}
+
+function isMandatoryPromptPending(section: Section, state: AppState): boolean {
+    return section.type === 'Prompt' && section.isMandatory === true && !isMandatoryPromptCompleted(section, state);
 }
 
 function getNextPosition(timeline: Timeline, state: AppState): TimelinePosition | undefined {
@@ -223,7 +239,7 @@ function renderSectionsPanel(timeline: Timeline, state: AppState, canOpenTranscr
                         <h3 class="info-label">${escapeHtml(`${index + 1}. ${chapterSection.title}`)}</h3>
                         ${isCurrent ? '<span class="notes-marker" aria-hidden="true">Now</span>' : ''}
                     </div>
-                    <p class="chapter-section-meta">${escapeHtml(chapterSection.type)} · ${formatClockTime(chapterSection.durationSeconds)}</p>
+                    <p class="chapter-section-meta">${escapeHtml(chapterSection.type)}${chapterSection.type === 'Prompt' && chapterSection.isMandatory ? ' · Mandatory' : ''} · ${formatClockTime(chapterSection.durationSeconds)}</p>
                     <div class="chapter-section-instructions">${renderMarkdown(instructions)}</div>
                 </div>
             `;
@@ -303,6 +319,9 @@ export function render(timeline: Timeline, state: AppState): void {
 
     const chapterTotalSeconds = getCurrentChapterTotalSeconds(timeline, state);
     const chapterSecondsRemaining = getCurrentChapterRemainingSeconds(timeline, state);
+    const showMandatoryPromptBanner = section.type === 'Prompt' && section.isMandatory === true;
+    const promptReminderPending = isMandatoryPromptPending(section, state);
+    const promptReminderCompleted = isMandatoryPromptCompleted(section, state);
 
     elTimer.textContent = formatClockTime(chapterSecondsRemaining);
     elTitle.textContent = chapter.title;
@@ -319,15 +338,18 @@ export function render(timeline: Timeline, state: AppState): void {
     document.body.classList.add(stateClass);
 
     const timerStateText =
+        promptReminderPending ? 'Prompt ready' :
         state.isPaused ? 'Paused' :
         chapterSecondsRemaining < 0 ? 'Overtime' :
         chapterSecondsRemaining <= chapterTotalSeconds * 0.2 ? 'Wrapping up' :
         'On track';
     elTimerState.textContent = timerStateText;
 
-    const kickerStatus = state.isPaused
-        ? (state.hasStarted ? 'paused' : 'ready')
-        : 'in progress';
+    const kickerStatus = promptReminderPending
+        ? 'prompt reminder'
+        : state.isPaused
+            ? (state.hasStarted ? 'paused' : 'ready')
+            : 'in progress';
     elSegmentKicker.textContent = `${timeline.title} · chapter ${state.currentChapterIndex + 1}/${timeline.chapters.length} · ${kickerStatus}`;
 
     if (state.isPaused) {
@@ -336,13 +358,44 @@ export function render(timeline: Timeline, state: AppState): void {
         document.body.classList.remove('paused');
     }
 
+    document.body.classList.toggle('prompt-reminder-active', promptReminderPending);
+
+    const promptReminderKey = showMandatoryPromptBanner
+        ? [state.currentChapterIndex, state.currentSectionIndex, promptReminderPending, promptReminderCompleted].join('|')
+        : 'hidden';
+
+    if (elPromptReminder && promptReminderKey !== lastPromptReminderKey) {
+        lastPromptReminderKey = promptReminderKey;
+
+        if (showMandatoryPromptBanner) {
+            elPromptReminder.hidden = false;
+            elPromptReminder.innerHTML = `
+                <p class="prompt-reminder-kicker">Mandatory prompt</p>
+                <h2 class="prompt-reminder-title">Pause for audience input</h2>
+                <p class="prompt-reminder-copy">${promptReminderPending
+                    ? 'Check this off when the task is complete. Navigation stays locked until then.'
+                    : 'This required prompt has been marked complete. Continue when ready.'}</p>
+                <label class="prompt-reminder-check" for="prompt-reminder-check">
+                    <input id="prompt-reminder-check" type="checkbox" ${promptReminderCompleted ? 'checked' : ''} />
+                    <span>${promptReminderCompleted ? 'Prompt completed' : 'Mark this prompt complete'}</span>
+                </label>
+            `;
+        } else {
+            elPromptReminder.hidden = true;
+            elPromptReminder.innerHTML = '';
+        }
+    }
+
     if (elPauseButton) {
-        const pauseLabel = state.isPaused
-            ? (state.hasStarted ? 'Resume' : 'Start')
-            : 'Pause';
+        const pauseLabel = promptReminderPending
+            ? 'Complete prompt'
+            : state.isPaused
+                ? (state.hasStarted ? 'Resume' : 'Start')
+                : 'Pause';
         const pauseSymbol = state.isPaused ? '>' : 'II';
         const symbolEl = elPauseButton.querySelector('.control-symbol');
         const textEl = elPauseButton.querySelector('.control-text');
+        elPauseButton.toggleAttribute('disabled', promptReminderPending);
         if (symbolEl) symbolEl.textContent = pauseSymbol;
         if (textEl) textEl.textContent = pauseLabel;
     }
@@ -351,10 +404,10 @@ export function render(timeline: Timeline, state: AppState): void {
     const prevBtn = document.getElementById('btn-prev') as HTMLButtonElement | null;
     const nextBtn = document.getElementById('btn-next') as HTMLButtonElement | null;
     if (prevBtn) {
-        prevBtn.disabled = state.currentChapterIndex === 0;
+        prevBtn.disabled = promptReminderPending || state.currentChapterIndex === 0;
     }
     if (nextBtn) {
-        nextBtn.disabled = state.currentChapterIndex >= timeline.chapters.length - 1;
+        nextBtn.disabled = promptReminderPending || state.currentChapterIndex >= timeline.chapters.length - 1;
     }
 
     const nextChapter = timeline.chapters[state.currentChapterIndex + 1];
